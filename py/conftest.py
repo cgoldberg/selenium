@@ -20,7 +20,9 @@ import os
 import socketserver
 import sys
 import threading
+import time
 import types
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,6 +37,9 @@ from selenium.webdriver.common.utils import free_port
 from selenium.webdriver.remote.server import Server
 from test.selenium.webdriver.common.network import get_lan_ip
 from test.selenium.webdriver.common.webserver import SimpleWebServer
+
+ENABLE_PROFILING = True
+
 
 drivers = (
     "chrome",
@@ -665,3 +670,83 @@ def proxy_server():
     for server in servers:
         server.shutdown()
         server.server_close()
+
+
+# performance profiling report
+#  - aggregates function/method call timing across entire test run
+#  - results report written to stdout
+if ENABLE_PROFILING:
+    NUM_FUNCS = 15  # only report top N function calls by total time
+    COLUMN_WIDTH_FUNCTION = 80
+    COLUMN_WIDTH_CALLS = 5
+    COLUMN_WIDTH_TOTAL = 15
+    COLUMN_WIDTH_AVG = 15
+
+    stats = defaultdict(lambda: {"calls": 0, "total_time": 0.0})
+    frame_stack = {}
+
+    CONFTEST_DIR = Path(__file__).parent.resolve()
+    PACKAGE_ROOT = None
+    for parent in [CONFTEST_DIR] + list(CONFTEST_DIR.parents):
+        candidate = parent / "selenium"
+        if candidate.exists() and candidate.is_dir():
+            PACKAGE_ROOT = str(candidate.resolve())
+            break
+    if PACKAGE_ROOT is None:
+        raise RuntimeError("Could not find package root.")
+
+    def trace(frame, event, arg):
+        if event not in ("call", "return"):
+            return trace
+
+        filename = frame.f_code.co_filename
+        funcname = frame.f_code.co_name
+
+        # Skip built-ins
+        if funcname.startswith("<"):
+            return trace
+
+        # Only include package files
+        if not filename.startswith(PACKAGE_ROOT):
+            return trace
+
+        # Key with relative path
+        key = f"{funcname} ({Path(filename).relative_to(PACKAGE_ROOT)}:{frame.f_code.co_firstlineno})"
+
+        if event == "call":
+            frame_stack[frame] = (key, time.perf_counter())
+        elif event == "return":
+            if frame in frame_stack:
+                key, start = frame_stack.pop(frame)
+                stats[key]["calls"] += 1
+                stats[key]["total_time"] += time.perf_counter() - start
+
+        return trace
+
+    def pytest_sessionstart(session):
+        sys.setprofile(trace)
+
+    def pytest_sessionfinish(session, exitstatus):
+        sys.setprofile(None)
+        if not stats:
+            return
+        sorted_stats = sorted(stats.items(), key=lambda x: x[1]["total_time"], reverse=True)[:NUM_FUNCS]
+        total_width = COLUMN_WIDTH_FUNCTION + COLUMN_WIDTH_CALLS + COLUMN_WIDTH_TOTAL + COLUMN_WIDTH_AVG + 3
+        separator = "-" * total_width
+        header = (
+            f"{'Function':{COLUMN_WIDTH_FUNCTION}s} "
+            f"{'Calls':>{COLUMN_WIDTH_CALLS}s} "
+            f"{'Total Time (s)':>{COLUMN_WIDTH_TOTAL}s} "
+            f"{'Avg Time (s)':>{COLUMN_WIDTH_AVG}s}"
+        )
+        print("\n\nPython profiling results:\n")
+        print(header)
+        print(separator)
+        for key, data in sorted_stats:
+            avg = data["total_time"] / data["calls"]
+            print(
+                f"{key:{COLUMN_WIDTH_FUNCTION}s} "
+                f"{data['calls']:>{COLUMN_WIDTH_CALLS}d} "
+                f"{data['total_time']:>{COLUMN_WIDTH_TOTAL}.6f} "
+                f"{avg:>{COLUMN_WIDTH_AVG}.6f}"
+            )
