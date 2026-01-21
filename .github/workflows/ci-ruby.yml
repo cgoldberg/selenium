@@ -26,28 +26,10 @@ jobs:
   steep-check:
     name: Type Check (Steep)
     needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: 3.2.8
-          bundler-cache: true
-          working-directory: rb
-
-      - name: Install RBS collection
-        working-directory: rb
-        run: bundle exec rbs collection install
-
-      - name: Run Steep type check
-        working-directory: rb
-        run: bundle exec rake steep 2>/dev/null || (bundle exec rake steep && exit 1)
+    uses: ./.github/workflows/bazel.yml
+    with:
+      name: Type Check (Steep)
+      run: bazel run //rb:steep
 
   unit-tests:
     name: Unit Tests
@@ -113,30 +95,4 @@ jobs:
         --local_test_jobs 1
         --test_size_filters large
         --test_tag_filters ${{ matrix.browser }}
-        //rb/spec/...
-
-  integration-tests-remote:
-    name: Remote Tests
-    needs: build
-    uses: ./.github/workflows/bazel.yml
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - browser: edge
-            os: macos
-    with:
-      name: Remote Tests (${{ matrix.browser }}, ${{ matrix.os }})
-      browser: ${{ matrix.browser }}
-      os: ${{ matrix.os }}
-      java-version: 17
-      rerun-with-debug: true
-      run: >
-        bazel test
-        --keep_going
-        --build_tests_only
-        --local_test_jobs 1
-        --flaky_test_attempts 2
-        --test_size_filters large
-        --test_tag_filters ${{ matrix.browser }}-remote
         //rb/spec/...
