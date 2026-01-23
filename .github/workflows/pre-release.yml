@@ -30,7 +30,7 @@ jobs:
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-  # Rust jobs run in parallel with approval since work is not on trunk
+  # Run rust jobs in parallel with approval since work is not on trunk
   generate-rust-version:
     name: Generate Rust Version
     if: github.event.repository.fork == false
@@ -43,29 +43,13 @@ jobs:
   push-rust-version:
     name: Push Rust Version
     needs: generate-rust-version
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.SELENIUM_CI_TOKEN }}
-          fetch-depth: 0
-      - name: Download rust version patch
-        uses: actions/download-artifact@v4
-        with:
-          name: rust-version
-      - name: Apply and push
-        run: |
-          if [ -f changes.patch ] && [ -s changes.patch ]; then
-            git apply --index changes.patch
-            git config --local user.email "selenium-ci@users.noreply.github.com"
-            git config --local user.name "Selenium CI Bot"
-            git commit -m "update selenium manager version and rust changelog"
-            git push origin HEAD:rust-release-${{ inputs.version }} --force
-          else
-            echo "::error::No changes to apply for rust version update"
-            exit 1
-          fi
+    uses: ./.github/workflows/commit-changes.yml
+    with:
+      artifact-name: rust-version
+      commit-message: "update selenium manager version and rust changelog"
+      push-branch: rust-release-${{ inputs.version }}
+    secrets:
+      SELENIUM_CI_TOKEN: ${{ secrets.SELENIUM_CI_TOKEN }}
 
   selenium-manager:
     name: Release Selenium Manager
@@ -131,10 +115,8 @@ jobs:
             run: ./go all:update_cdp ${{ inputs.chrome_channel }}
           - name: manager
             run: ./go update_manager
-          - name: maven
-            run: ./go java:update
-          - name: node
-            run: ./go node:update
+          - name: dependencies
+            run: ./go release_update
           - name: authors
             run: ./go authors
     uses: ./.github/workflows/bazel.yml
@@ -201,8 +183,7 @@ jobs:
           apply_patch browsers "update pinned browser versions"
           apply_patch devtools "update devtools versions"
           apply_patch manager "update selenium manager versions"
-          apply_patch maven "update maven dependency versions"
-          apply_patch node "update node dependency versions"
+          apply_patch dependencies "update dependency versions"
           apply_patch authors "update authors file"
           apply_patch versions "bump versions in preparation for release"
           apply_patch changelogs "changelogs updated"
@@ -223,8 +204,7 @@ jobs:
             | Browser and driver versions | ${{ steps.apply.outputs.browsers == 'true' && '✅ Updated' || '⏭️ Skipped (no changes)' }} |
             | CDP version | ${{ steps.apply.outputs.devtools == 'true' && '✅ Updated' || '⏭️ Skipped (no changes)' }} |
             | Selenium Manager version | ${{ steps.apply.outputs.manager == 'true' && '✅ Updated' || '⏭️ Skipped (no changes)' }} |
-            | Maven dependencies | ${{ steps.apply.outputs.maven == 'true' && '✅ Updated' || '⏭️ Skipped (no changes)' }} |
-            | Node dependencies | ${{ steps.apply.outputs.node == 'true' && '✅ Updated' || '⏭️ Skipped (no changes)' }} |
+            | Update dependencies | ${{ steps.apply.outputs.dependencies == 'true' && '✅ Updated' || '⏭️ Skipped (no changes)' }} |
             | Update Authors | ${{ steps.apply.outputs.authors == 'true' && '✅ Updated' || '⏭️ Skipped (no changes)' }} |
             | Bump Versions | ${{ steps.apply.outputs.versions == 'true' && '✅ Updated' || '⏭️ Skipped (no changes)' }} |
             | Draft Changelogs | ${{ steps.apply.outputs.changelogs == 'true' && '✅ Updated' || '⏭️ Skipped (no changes)' }} |

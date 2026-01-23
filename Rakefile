@@ -6,6 +6,7 @@ $LOAD_PATH.unshift File.expand_path('.')
 require 'base64'
 require 'json'
 require 'rake'
+require 'rbconfig'
 require 'net/http'
 require 'net/telnet'
 require 'stringio'
@@ -13,40 +14,15 @@ require 'fileutils'
 require 'open-uri'
 require 'git'
 require 'find'
+require 'set'
 
 Rake.application.instance_variable_set(:@name, 'go')
 orig_verbose = verbose
 verbose(false)
 
-# The CrazyFun build grammar. There's no magic here, just ruby
-require 'rake_tasks/crazy_fun/main'
-require 'rake_tasks/selenium_rake/detonating_handler'
-require 'rake_tasks/selenium_rake/crazy_fun'
-
-# The CrazyFun builders - Most of these are either partially or fully obsolete
-# Note the order here is important - The top 2 are used in inheritance chains
-require 'rake_tasks/crazy_fun/mappings/file_copy_hack'
-require 'rake_tasks/crazy_fun/mappings/tasks'
-require 'rake_tasks/crazy_fun/mappings/rake_mappings'
-
 # Location of all new (non-CrazyFun) methods
-require 'rake_tasks/selenium_rake/browsers'
-require 'rake_tasks/selenium_rake/checks'
-require 'rake_tasks/selenium_rake/cpp_formatter'
-require 'rake_tasks/selenium_rake/ie_generator'
-require 'rake_tasks/selenium_rake/java_formatter'
-require 'rake_tasks/selenium_rake/type_definitions_generator'
-
-# Our modifications to the Rake / Bazel libraries
 require 'rake/task'
-require 'rake_tasks/rake/task'
-require 'rake_tasks/rake/dsl'
-require 'rake_tasks/bazel/task'
-
-# These are the final items mixed into the global NS
-# These need moving into correct namespaces, and not be globally included
 require 'rake_tasks/bazel'
-require 'rake_tasks/python'
 
 $DEBUG = orig_verbose != Rake::FileUtilsExt::DEFAULT
 $DEBUG = true if ENV['debug'] == 'true'
@@ -60,40 +36,10 @@ def java_version
   end
 end
 
-# The build system used by webdriver is layered on top of rake, and we call it
-# "crazy fun" for no readily apparent reason.
-
-# First off, create a new CrazyFun object.
-crazy_fun = SeleniumRake::CrazyFun.new
-
-# Secondly, we add the handlers, which are responsible for turning a build
-# rule into a (series of) rake tasks. For example if we're looking at a file
-# in subdirectory "subdir" contains the line:
-#
-# java_library(:name => "example", :srcs => ["foo.java"])
-#
-# we would generate a rake target of "//subdir:example" which would generate
-# a Java JAR at "build/subdir/example.jar".
-#
-# If crazy fun doesn't know how to handle a particular output type ("java_library"
-# in the example above) then it will throw an exception, stopping the build
-CrazyFun::Mappings::RakeMappings.new.add_all(crazy_fun)
-
-# Finally, find every file named "build.desc" in the project, and generate
-# rake tasks from them. These tasks are normal rake tasks, and can be invoked
-# from rake.
-# FIXME: the rules for the targets were removed and build files won't load
-# crazy_fun.create_tasks(Dir['**/build.desc'])
-
 # If it looks like a bazel target, build it with bazel
 rule(%r{//.*}) do |task|
-  task.out = Bazel.execute('build', %w[], task.name)
+  Bazel.execute('build', %w[], task.name)
 end
-
-# Spoof tasks to get CI working with bazel
-task '//java/test/org/openqa/selenium/environment/webserver:webserver:uber' => [
-  '//java/test/org/openqa/selenium/environment:webserver'
-]
 
 # use #java_release_targets to access this list
 JAVA_RELEASE_TARGETS = %w[
@@ -174,148 +120,7 @@ task :update_manager do |_task, _arguments|
   @git.add('common/selenium_manager.bzl')
 end
 
-task all: [
-  :'selenium-java',
-  '//java/test/org/openqa/selenium/environment:webserver'
-]
-
-task tests: [
-  '//java/test/org/openqa/selenium/htmlunit:htmlunit',
-  '//java/test/org/openqa/selenium/firefox:test-synthesized',
-  '//java/test/org/openqa/selenium/ie:ie',
-  '//java/test/org/openqa/selenium/chrome:chrome',
-  '//java/test/org/openqa/selenium/edge:edge',
-  '//java/test/org/openqa/selenium/support:small-tests',
-  '//java/test/org/openqa/selenium/support:large-tests',
-  '//java/test/org/openqa/selenium/remote:small-tests',
-  '//java/test/org/openqa/selenium/remote/server/log:test',
-  '//java/test/org/openqa/selenium/remote/server:small-tests'
-]
-task chrome: ['//java/src/org/openqa/selenium/chrome']
-task grid: [:'selenium-server-standalone']
-task ie: ['//java/src/org/openqa/selenium/ie']
-task firefox: ['//java/src/org/openqa/selenium/firefox']
-task remote: %i[remote_server remote_client]
-task remote_client: ['//java/src/org/openqa/selenium/remote']
-task remote_server: ['//java/src/org/openqa/selenium/remote/server']
-task safari: ['//java/src/org/openqa/selenium/safari']
-task selenium: ['//java/src/org/openqa/selenium:core']
-task support: ['//java/src/org/openqa/selenium/support']
-
-desc 'Build the standalone server'
-task 'selenium-server-standalone' => '//java/src/org/openqa/selenium/grid:executable-grid'
-
-task test_javascript: [
-  '//javascript/atoms:test-chrome:run',
-  '//javascript/webdriver:test-chrome:run',
-  '//javascript/selenium-atoms:test-chrome:run',
-  '//javascript/selenium-core:test-chrome:run'
-]
-task test_chrome: ['//java/test/org/openqa/selenium/chrome:chrome:run']
-task test_edge: ['//java/test/org/openqa/selenium/edge:edge:run']
-task test_chrome_atoms: [
-  '//javascript/atoms:test-chrome:run',
-  '//javascript/chrome-driver:test-chrome:run',
-  '//javascript/webdriver:test-chrome:run'
-]
-task test_htmlunit: [
-  '//java/test/org/openqa/selenium/htmlunit:htmlunit:run'
-]
-task test_grid: [
-  '//java/test/org/openqa/grid/common:common:run',
-  '//java/test/org/openqa/grid:grid:run',
-  '//java/test/org/openqa/grid/e2e:e2e:run',
-  '//java/test/org/openqa/selenium/remote:remote-driver-grid-tests:run'
-]
-task test_ie: [
-  '//cpp/iedriverserver:win32',
-  '//cpp/iedriverserver:x64',
-  '//java/test/org/openqa/selenium/ie:ie:run'
-]
-task test_jobbie: [:test_ie]
-task test_firefox: ['//java/test/org/openqa/selenium/firefox:marionette:run']
-task test_remote_server: [
-  '//java/test/org/openqa/selenium/remote/server:small-tests:run',
-  '//java/test/org/openqa/selenium/remote/server/log:test:run'
-]
-task test_remote: [
-  '//java/test/org/openqa/selenium/json:small-tests:run',
-  '//java/test/org/openqa/selenium/remote:common-tests:run',
-  '//java/test/org/openqa/selenium/remote:client-tests:run',
-  '//java/test/org/openqa/selenium/remote:remote-driver-tests:run',
-  :test_remote_server
-]
-task test_safari: ['//java/test/org/openqa/selenium/safari:safari:run']
-task test_support: [
-  '//java/test/org/openqa/selenium/support:small-tests:run',
-  '//java/test/org/openqa/selenium/support:large-tests:run'
-]
-
-task :test_java_webdriver do
-  if SeleniumRake::Checks.windows?
-    Rake::Task['test_ie'].invoke
-  elsif SeleniumRake::Checks.chrome?
-    Rake::Task['test_chrome'].invoke
-  elsif SeleniumRake::Checks.edge?
-    Rake::Task['test_edge'].invoke
-  else
-    Rake::Task['test_htmlunit'].invoke
-    Rake::Task['test_firefox'].invoke
-    Rake::Task['test_remote_server'].invoke
-  end
-end
-
-task test_java: [
-  '//java/test/org/openqa/selenium/atoms:test:run',
-  :test_java_small_tests,
-  :test_support,
-  :test_java_webdriver,
-  :test_selenium,
-  'test_grid'
-]
-
-task test_java_small_tests: [
-  '//java/test/org/openqa/selenium:small-tests:run',
-  '//java/test/org/openqa/selenium/json:small-tests:run',
-  '//java/test/org/openqa/selenium/support:small-tests:run',
-  '//java/test/org/openqa/selenium/remote:common-tests:run',
-  '//java/test/org/openqa/selenium/remote:client-tests:run',
-  '//java/test/org/openqa/grid/selenium/node:node:run',
-  '//java/test/org/openqa/grid/selenium/proxy:proxy:run',
-  '//java/test/org/openqa/selenium/remote/server:small-tests:run',
-  '//java/test/org/openqa/selenium/remote/server/log:test:run'
-]
-
-task :test do
-  if SeleniumRake::Checks.python?
-    Rake::Task['test_py'].invoke
-  else
-    Rake::Task['test_javascript'].invoke
-    Rake::Task['test_java'].invoke
-  end
-end
-
-task test_py: [:py_prep_for_install_release, 'py:marionette_test']
-task build: %i[all firefox remote selenium tests]
-
-desc 'Clean build artifacts.'
-task :clean do
-  rm_rf 'build/'
-  rm_rf 'java/build/'
-  rm_rf 'dist/'
-end
-
-# Create a new IEGenerator instance
-ie_generator = SeleniumRake::IEGenerator.new
-
-# Generate a C++ Header file for mapping between magic numbers and #defines
-# in the C++ code.
-ie_generator.generate_type_mapping(
-  name: 'ie_result_type_cpp',
-  src: 'cpp/iedriver/result_types.txt',
-  type: 'cpp',
-  out: 'cpp/iedriver/IEReturnTypes.h'
-)
+task grid: ['java:grid']
 
 desc 'Generate Javadocs'
 task javadocs: %i[//java/src/org/openqa/selenium/grid:all-javadocs] do
@@ -324,7 +129,8 @@ task javadocs: %i[//java/src/org/openqa/selenium/grid:all-javadocs] do
   out = 'bazel-bin/java/src/org/openqa/selenium/grid/all-javadocs.jar'
 
   cmd = %(cd build/docs/api/java && jar xf "../../../../#{out}" 2>&1)
-  cmd = cmd.tr('/', '\\').tr(':', ';') if SeleniumRake::Checks.windows?
+  windows = RbConfig::CONFIG['host_os'] =~ /mswin|msys|mingw32/
+  cmd = cmd.tr('/', '\\').tr(':', ';') if windows
   raise 'could not unpack javadocs' unless system(cmd)
 
   File.open('build/docs/api/java/stylesheet.css', 'a') do |file|
@@ -345,11 +151,19 @@ task javadocs: %i[//java/src/org/openqa/selenium/grid:all-javadocs] do
   end
 end
 
-file 'cpp/iedriver/sizzle.h' => ['//third_party/js/sizzle:sizzle:header'] do
-  cp 'build/third_party/js/sizzle/sizzle.h', 'cpp/iedriver/sizzle.h'
+desc 'Update dependencies for the release'
+task :release_update do |_task, _arguments|
+  Rake::Task[:update_multitool].invoke
+  Rake::Task['java:update'].invoke
+  Rake::Task['node:update'].invoke
 end
 
-task sizzle_header: ['cpp/iedriver/sizzle.h']
+desc 'Update multitool binaries to latest releases'
+task :update_multitool do |_task, _arguments|
+  puts 'Updating multitool binary versions'
+  Bazel.execute('run', [], '//scripts:update_multitool_binaries')
+  @git.add('multitool.lock.json')
+end
 
 task ios_driver: [
   '//javascript/atoms/fragments:get_visible_text:ios',
@@ -533,56 +347,12 @@ task :authors do
   @git.add('AUTHORS')
 end
 
-namespace :side do
-  task atoms: [
-    '//javascript/atoms/fragments:find-element'
-  ] do
-    # TODO: move directly to IDE's directory once the repositories are merged
-    mkdir_p 'build/javascript/atoms'
-
-    atom = 'bazel-bin/javascript/atoms/fragments/find-element.js'
-    name = File.basename(atom)
-
-    puts "Generating #{atom} as #{name}"
-    File.open(File.join(baseDir, name), 'w') do |f|
-      f << "// GENERATED CODE - DO NOT EDIT\n"
-      f << 'module.exports = '
-      f << File.read(atom).strip
-      f << ";\n"
-    end
-  end
-end
-
 def node_version
   File.foreach('javascript/selenium-webdriver/package.json') do |line|
     return line.split(':').last.strip.tr('",', '') if line.include?('version')
   end
 end
 namespace :node do
-  atom_list = %w[
-    //javascript/atoms/fragments:find-elements
-    //javascript/atoms/fragments:is-displayed
-    //javascript/webdriver/atoms:get-attribute
-  ]
-
-  task atoms: atom_list do
-    base_dir = 'javascript/selenium-webdriver/lib/atoms'
-    mkdir_p base_dir
-
-    ['bazel-bin/javascript/atoms/fragments/is-displayed.js',
-     'bazel-bin/javascript/webdriver/atoms/get-attribute.js',
-     'bazel-bin/javascript/atoms/fragments/find-elements.js'].each do |atom|
-      name = File.basename(atom)
-      puts "Generating #{atom} as #{name}"
-      File.open(File.join(base_dir, name), 'w') do |f|
-        f << "// GENERATED CODE - DO NOT EDIT\n"
-        f << 'module.exports = '
-        f << File.read(atom).strip
-        f << ";\n"
-      end
-    end
-  end
-
   desc 'Build Node npm package'
   task :build do |_task, arguments|
     args = arguments.to_a.compact
@@ -601,6 +371,7 @@ namespace :node do
     args << '--latest' if arguments[:latest] == 'latest'
     args += ['--dir', Dir.pwd]
     Bazel.execute('run', args, '@pnpm//:pnpm')
+    @git.add('javascript/selenium-webdriver/package.json')
     Rake::Task['node:pin'].invoke
   end
 
@@ -639,8 +410,6 @@ namespace :node do
     puts 'Generating Node documentation'
     FileUtils.rm_rf('build/docs/api/javascript/')
     Bazel.execute('run', [], '//javascript/selenium-webdriver:docs')
-
-    update_gh_pages unless arguments.to_a.include?('skip_update')
   end
 
   desc 'Update JavaScript changelog'
@@ -749,8 +518,6 @@ namespace :py do
 
     FileUtils.mkdir_p('build/docs/api')
     FileUtils.cp_r('bazel-bin/py/docs/_build/html/.', 'build/docs/api/py')
-
-    update_gh_pages unless arguments.to_a.include?('skip_update')
   end
 
   desc 'Install Python wheel locally'
@@ -853,25 +620,6 @@ namespace :rb do
     Bazel.execute('build', args, '//rb:selenium-devtools') if devtools || !webdriver
   end
 
-  task :atoms do
-    base_dir = 'rb/lib/selenium/webdriver/atoms'
-    mkdir_p base_dir
-
-    {
-      '//javascript/atoms/fragments:find-elements': 'findElements.js',
-      '//javascript/atoms/fragments:is-displayed': 'isDisplayed.js',
-      '//javascript/webdriver/atoms:get-attribute': 'getAttribute.js'
-    }.each do |target, name|
-      puts "Generating #{target} as #{name}"
-
-      atom = Bazel.execute('build', [], target.to_s)
-
-      File.open(File.join(base_dir, name), 'w') do |f|
-        f << File.read(atom).strip
-      end
-    end
-  end
-
   desc 'Update generated Ruby files for local development'
   task :local_dev do
     puts 'installing ruby, this may take a minute'
@@ -921,8 +669,6 @@ namespace :rb do
     Bazel.execute('run', [], '//rb:docs')
     FileUtils.mkdir_p('build/docs/api')
     FileUtils.cp_r('bazel-bin/rb/docs.sh.runfiles/_main/docs/api/rb/.', 'build/docs/api/rb')
-
-    update_gh_pages unless arguments.to_a.include?('skip_update')
   end
 
   desc 'Update Ruby changelog'
@@ -1082,8 +828,6 @@ namespace :dotnet do
     puts 'Generating .NET documentation'
     FileUtils.rm_rf('build/docs/api/dotnet/')
     Bazel.execute('run', [], '//dotnet:docs')
-
-    update_gh_pages unless arguments.to_a.include?('skip_update')
   end
 
   desc 'Update .NET changelog'
@@ -1272,8 +1016,6 @@ namespace :java do
 
     puts 'Generating Java documentation'
     Rake::Task['javadocs'].invoke
-
-    update_gh_pages unless arguments.to_a.include?('skip_update')
   end
 
   desc 'Update Maven dependencies'
@@ -1346,6 +1088,8 @@ namespace :rust do
     puts 'pinning cargo versions'
     ENV['CARGO_BAZEL_REPIN'] = 'true'
     Bazel.execute('fetch', [], '@crates//:all')
+    @git.add('rust/Cargo.Bazel.lock')
+    @git.add('rust/Cargo.lock')
   end
 
   desc 'Pin Rust dependencies'
@@ -1416,16 +1160,14 @@ namespace :all do
      'Rakefile'].each { |file| @git.add(file) }
   end
 
-  desc 'Update all API Documentation'
+  desc 'Build all API Documentation'
   task :docs do |_task, arguments|
-    args = arguments.to_a
-    Rake::Task['java:docs'].invoke(*(args + ['skip_update']))
-    Rake::Task['py:docs'].invoke(*(args + ['skip_update']))
-    Rake::Task['rb:docs'].invoke(*(args + ['skip_update']))
-    Rake::Task['dotnet:docs'].invoke(*(args + ['skip_update']))
-    Rake::Task['node:docs'].invoke(*(args + ['skip_update']))
-
-    update_gh_pages
+    args = arguments.to_a.compact
+    Rake::Task['java:docs'].invoke(*args)
+    Rake::Task['py:docs'].invoke(*args)
+    Rake::Task['rb:docs'].invoke(*args)
+    Rake::Task['dotnet:docs'].invoke(*args)
+    Rake::Task['node:docs'].invoke(*args)
   end
 
   desc 'Build all artifacts for all language bindings'
@@ -1495,6 +1237,7 @@ namespace :all do
     end
 
     Bazel.execute('run', [], '//py:mypy')
+    Bazel.execute('run', [], '//py:ruff')
     Bazel.execute('run', [], '//rb:steep')
     shellcheck = Bazel.execute('build', [], '@multitool//tools/shellcheck')
     Bazel.execute('run', ['--', '-shellcheck', shellcheck], '@multitool//tools/actionlint:cwd')
@@ -1550,12 +1293,6 @@ namespace :all do
   end
 end
 
-at_exit do
-  system 'sh', '.git-fixfiles' if File.exist?('.git') && SeleniumRake::Checks.linux?
-rescue StandardError => e
-  puts "Do not exit execution when this errors... #{e.inspect}"
-end
-
 def updated_version(current, desired = nil, nightly = nil)
   if !desired.nil? && desired != 'nightly'
     # If desired is present, return full 3 digit version
@@ -1568,36 +1305,6 @@ def updated_version(current, desired = nil, nightly = nil)
     # if current version is not nightly, need to bump the version and make nightly
     "#{current.split(/\.|-/).tap { |i| (i[1] = i[1].to_i + 1) && (i[2] = 0) }.join('.')}#{nightly}"
   end
-end
-
-def update_gh_pages(force: true)
-  puts 'Switching to gh-pages branch...'
-  @git.fetch('https://github.com/seleniumhq/selenium.git', {ref: 'gh-pages'})
-
-  unless force
-    puts 'Stash changes that are not docs...'
-    @git.lib.send(:command, 'stash', ['push', '-m', 'stash wip', '--', ':(exclude)build/docs/api/'])
-  end
-
-  @git.checkout('gh-pages', force: force)
-
-  updated = false
-
-  %w[java rb py dotnet javascript].each do |language|
-    source = "build/docs/api/#{language}"
-    destination = "docs/api/#{language}"
-
-    next unless Dir.exist?(source) && !Dir.empty?(source)
-
-    puts "Updating documentation for #{language}..."
-    FileUtils.rm_rf(destination)
-    FileUtils.mv(source, destination)
-
-    @git.add(destination)
-    updated = true
-  end
-
-  puts(updated ? 'Documentation staged. Ready for commit.' : 'No documentation changes found.')
 end
 
 def previous_tag(current_version, language = nil)
@@ -1639,4 +1346,65 @@ def update_changelog(version, language, path, changelog, header)
   content = File.read(changelog)
   File.write(changelog, "#{header}\n#{entries}\n\n#{content}")
   @git.add(changelog)
+end
+
+BINDING_TARGETS = {
+  'java' => '//java/...',
+  'py' => '//py/...',
+  'rb' => '//rb/...',
+  'dotnet' => '//dotnet/...',
+  'javascript' => '//javascript/selenium-webdriver/...'
+}.freeze
+
+namespace :bazel do
+  # ./go bazel:build_test_index            --> 'build/bazel-test-target-index.json'
+  # ./go bazel:build_test_index index.json --> 'index.json'
+  desc 'Build test target index for faster affected target lookup'
+  task :build_test_index, [:index_file] do |_task, args|
+    output = args[:index_file] || 'build/bazel-test-target-index.json'
+
+    index = {}
+    tests = []
+
+    exclude_tags = %w[manual spotbugs ie]
+    all_bindings = BINDING_TARGETS.values.join(' + ')
+    tag_exclusions = exclude_tags.map { |tag| "except attr(tags, #{tag}, #{all_bindings})" }.join(' ')
+    kind = '_test' # do not match test_suite or pytest_runner
+
+    puts "Finding all test targets for #{all_bindings}, excluding: #{exclude_tags}"
+    Bazel.execute('query', ['--output=label'], "kind(#{kind}, #{all_bindings}) #{tag_exclusions}") do |out|
+      tests = out.lines.map(&:strip).select { |l| l.start_with?('//') }
+    end
+    puts "Found #{tests.size} tests"
+
+    tests.each_with_index do |test, i|
+      puts "Processing #{i + 1}/#{tests.size}: #{test}" if (i % 100).zero?
+
+      deps = []
+      Bazel.execute('query', ['--output=label'], "deps(#{test})") do |out|
+        deps = out.lines.map(&:strip).select { |l| l.start_with?('//', '@selenium//') }
+      end
+
+      deps.each do |dep|
+        pkg = bazel_label_to_package(dep)
+        next if pkg.nil? || pkg.empty?
+
+        index[pkg] ||= []
+        index[pkg] << test unless index[pkg].include?(test)
+      end
+    end
+
+    sorted_index = index.keys.sort.each_with_object({}) { |k, h| h[k] = index[k].sort }
+    File.write(output, JSON.pretty_generate(sorted_index))
+    puts "Wrote #{sorted_index.size} packages to #{output}"
+  end
+end
+
+def bazel_label_to_package(label)
+  # Skip external deps (but allow @selenium// which is internal)
+  return nil if label.start_with?('@') && !label.start_with?('@selenium//')
+
+  # Normalize @selenium//foo to foo, //foo to foo
+  label = label.sub(%r{^@selenium//}, '').sub(%r{^//}, '')
+  label.split(':').first
 end
