@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "selenium"
-version = "4.41.0.202601181916"
+version = "4.42.0.202602192150"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 description = "Official Python bindings for Selenium WebDriver."
@@ -44,7 +44,7 @@ issues = "https://github.com/SeleniumHQ/selenium/issues"
 
 [dependency-groups]
 lint = [
-    "ruff==0.15.0",
+    "ruff==0.15.8",
 ]
 validate = [
     "validate-pyproject==0.25",
@@ -67,6 +67,7 @@ binding = "Exec"
 [tool.setuptools.package-data]
 "*" = [
     "*.py",
+    "*.pyi",
     "*.rst",
     "*.json",
     "*.xpi",

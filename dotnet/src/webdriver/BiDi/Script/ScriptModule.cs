@@ -17,18 +17,14 @@
 // under the License.
 // </copyright>
 
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
-using System.Threading.Tasks;
 using OpenQA.Selenium.BiDi.Json.Converters;
 
 namespace OpenQA.Selenium.BiDi.Script;
 
-public sealed class ScriptModule : Module
+public sealed class ScriptModule : Module, IScriptModule
 {
     private ScriptJsonSerializerContext _jsonContext = null!;
 
@@ -98,14 +94,14 @@ public sealed class ScriptModule : Module
         return await SubscribeAsync("script.message", handler, options, _jsonContext.MessageEventArgs, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<Subscription> OnRealmCreatedAsync(Func<RealmInfo, Task> handler, SubscriptionOptions? options = null, CancellationToken cancellationToken = default)
+    public async Task<Subscription> OnRealmCreatedAsync(Func<RealmInfoEventArgs, Task> handler, SubscriptionOptions? options = null, CancellationToken cancellationToken = default)
     {
-        return await SubscribeAsync("script.realmCreated", handler, options, _jsonContext.RealmInfo, cancellationToken).ConfigureAwait(false);
+        return await SubscribeAsync("script.realmCreated", handler, options, _jsonContext.RealmInfoEventArgs, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<Subscription> OnRealmCreatedAsync(Action<RealmInfo> handler, SubscriptionOptions? options = null, CancellationToken cancellationToken = default)
+    public async Task<Subscription> OnRealmCreatedAsync(Action<RealmInfoEventArgs> handler, SubscriptionOptions? options = null, CancellationToken cancellationToken = default)
     {
-        return await SubscribeAsync("script.realmCreated", handler, options, _jsonContext.RealmInfo, cancellationToken).ConfigureAwait(false);
+        return await SubscribeAsync("script.realmCreated", handler, options, _jsonContext.RealmInfoEventArgs, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<Subscription> OnRealmDestroyedAsync(Func<RealmDestroyedEventArgs, Task> handler, SubscriptionOptions? options = null, CancellationToken cancellationToken = default)
@@ -118,7 +114,7 @@ public sealed class ScriptModule : Module
         return await SubscribeAsync("script.realmDestroyed", handler, options, _jsonContext.RealmDestroyedEventArgs, cancellationToken).ConfigureAwait(false);
     }
 
-    protected override void Initialize(BiDi bidi, JsonSerializerOptions jsonSerializerOptions)
+    protected override void Initialize(IBiDi bidi, JsonSerializerOptions jsonSerializerOptions)
     {
         jsonSerializerOptions.Converters.Add(new BrowsingContextConverter(bidi));
         jsonSerializerOptions.Converters.Add(new BrowserUserContextConverter(bidi));
@@ -186,6 +182,17 @@ public sealed class ScriptModule : Module
 [JsonSerializable(typeof(RemovePreloadScriptResult))]
 
 [JsonSerializable(typeof(MessageEventArgs))]
+[JsonSerializable(typeof(RealmInfoEventArgs))]
 [JsonSerializable(typeof(RealmDestroyedEventArgs))]
+#region https://github.com/dotnet/runtime/issues/72604
+[JsonSerializable(typeof(WindowRealmInfoEventArgs))]
+[JsonSerializable(typeof(DedicatedWorkerRealmInfoEventArgs))]
+[JsonSerializable(typeof(SharedWorkerRealmInfoEventArgs))]
+[JsonSerializable(typeof(ServiceWorkerRealmInfoEventArgs))]
+[JsonSerializable(typeof(WorkerRealmInfoEventArgs))]
+[JsonSerializable(typeof(PaintWorkletRealmInfoEventArgs))]
+[JsonSerializable(typeof(AudioWorkletRealmInfoEventArgs))]
+[JsonSerializable(typeof(WorkletRealmInfoEventArgs))]
+#endregion
 
 internal partial class ScriptJsonSerializerContext : JsonSerializerContext;
