@@ -33,7 +33,7 @@ internal class ScriptCommandsTests : BiDiTestFixture
         var realmsResult = await bidi.Script.GetRealmsAsync();
 
         Assert.That(realmsResult, Is.Not.Null);
-        Assert.That(realmsResult.Realms, Has.Count.EqualTo(2));
+        Assert.That(realmsResult.Realms, Has.Length.EqualTo(2));
 
         Assert.That(realmsResult.Realms[0], Is.AssignableFrom<WindowRealmInfo>());
         Assert.That(realmsResult.Realms[0].Realm, Is.Not.Null);
@@ -50,7 +50,7 @@ internal class ScriptCommandsTests : BiDiTestFixture
         var realmsResult = await bidi.Script.GetRealmsAsync(new() { Type = RealmType.Window });
 
         Assert.That(realmsResult, Is.Not.Null);
-        Assert.That(realmsResult.Realms, Has.Count.EqualTo(2));
+        Assert.That(realmsResult.Realms, Has.Length.EqualTo(2));
 
         Assert.That(realmsResult.Realms[0], Is.AssignableFrom<WindowRealmInfo>());
         Assert.That(realmsResult.Realms[0].Realm, Is.Not.Null);
@@ -92,9 +92,9 @@ internal class ScriptCommandsTests : BiDiTestFixture
 
         Assert.That(preloadScript, Is.Not.Null);
 
-        TaskCompletionSource<LogEntryEventArgs> tcs = new();
+        TaskCompletionSource<EntryAddedEventArgs> tcs = new();
 
-        await context.Log.OnEntryAddedAsync(tcs.SetResult);
+        await using var subscription = await context.Log.EntryAdded.SubscribeAsync(e => tcs.TrySetResult(e));
 
         await context.ReloadAsync(new() { Wait = ReadinessState.Interactive });
 
@@ -109,7 +109,7 @@ internal class ScriptCommandsTests : BiDiTestFixture
     {
         var preloadScript = await bidi.Script.AddPreloadScriptAsync("(channel) => channel('will_be_send', 'will_be_ignored')", new()
         {
-            Arguments = [new ChannelLocalValue(new(new("channel_name")))]
+            Arguments = [new ChannelLocalValue(new(new(bidi, "channel_name")))]
         });
 
         Assert.That(preloadScript, Is.Not.Null);
@@ -120,7 +120,7 @@ internal class ScriptCommandsTests : BiDiTestFixture
     {
         var preloadScript = await bidi.Script.AddPreloadScriptAsync("(channel) => channel('will_be_send', 'will_be_ignored')", new()
         {
-            Arguments = [new ChannelLocalValue(new(new("channel_name"))
+            Arguments = [new ChannelLocalValue(new(new(bidi, "channel_name"))
             {
                 SerializationOptions = new()
                 {

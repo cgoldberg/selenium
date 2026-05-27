@@ -25,7 +25,7 @@ namespace OpenQA.Selenium.Tests.BiDi;
 
 [Parallelizable(ParallelScope.All)]
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class BiDiTestFixture
+public abstract class BiDiTestFixture
 {
     protected IWebDriver driver;
     protected IBiDi bidi;
@@ -57,7 +57,10 @@ public class BiDiTestFixture
             await bidi.DisposeAsync();
         }
 
-        driver?.Dispose();
+        if (driver is not null)
+        {
+            await driver.DisposeAsync();
+        }
     }
 
     public class BiDiEnabledDriverOptions : DriverOptions

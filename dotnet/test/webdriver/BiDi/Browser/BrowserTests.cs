@@ -17,6 +17,8 @@
 // under the License.
 // </copyright>
 
+using OpenQA.Selenium.BiDi.Browser;
+
 namespace OpenQA.Selenium.Tests.BiDi.Browser;
 
 internal class BrowserTests : BiDiTestFixture
@@ -38,7 +40,7 @@ internal class BrowserTests : BiDiTestFixture
         var userContextsResult = await bidi.Browser.GetUserContextsAsync();
 
         Assert.That(userContextsResult, Is.Not.Null);
-        Assert.That(userContextsResult.UserContexts, Has.Count.GreaterThanOrEqualTo(2));
+        Assert.That(userContextsResult.UserContexts, Has.Length.GreaterThanOrEqualTo(2));
         Assert.That(userContextsResult.UserContexts.Select(contextInfo => contextInfo.UserContext), Does.Contain(userContext1.UserContext));
         Assert.That(userContextsResult.UserContexts.Select(contextInfo => contextInfo.UserContext), Does.Contain(userContext2.UserContext));
     }
@@ -63,39 +65,35 @@ internal class BrowserTests : BiDiTestFixture
         var clientWindowsResult = await bidi.Browser.GetClientWindowsAsync();
 
         Assert.That(clientWindowsResult, Is.Not.Null);
-        Assert.That(clientWindowsResult.ClientWindows, Has.Count.GreaterThanOrEqualTo(1));
+        Assert.That(clientWindowsResult.ClientWindows, Has.Length.GreaterThanOrEqualTo(1));
         Assert.That(clientWindowsResult.ClientWindows[0].ClientWindow, Is.Not.Null);
     }
 
     [Test]
-    [IgnoreBrowser(Infrastructure.Browser.Chrome, "Not supported yet?")]
-    [IgnoreBrowser(Infrastructure.Browser.Edge, "Not supported yet?")]
-    [IgnoreBrowser(Infrastructure.Browser.Firefox, "Not supported yet?")]
     public async Task CanSetDownloadBehaviorAllowed()
     {
-        var result = await bidi.Browser.SetDownloadBehaviorAllowedAsync("/my/path");
+        var result = await bidi.Browser.SetDownloadBehaviorAsync(new DownloadBehaviorAllowed("/my/path"));
 
         Assert.That(result, Is.Not.Null);
     }
 
     [Test]
-    [IgnoreBrowser(Infrastructure.Browser.Chrome, "Not supported yet?")]
-    [IgnoreBrowser(Infrastructure.Browser.Edge, "Not supported yet?")]
-    [IgnoreBrowser(Infrastructure.Browser.Firefox, "Not supported yet?")]
-    public async Task CanSetDownloadBehaviorAllowedDefault()
+    public async Task CanSetDownloadBehaviorDefault()
     {
-        var result = await bidi.Browser.SetDownloadBehaviorAllowedAsync();
+        var result = await bidi.Browser.SetDownloadBehaviorAsync(null);
+
+        // or
+
+        var result2 = await bidi.Browser.SetDownloadBehaviorAsync(DownloadBehavior.Default);
 
         Assert.That(result, Is.Not.Null);
+        Assert.That(result2, Is.Not.Null);
     }
 
     [Test]
-    [IgnoreBrowser(Infrastructure.Browser.Chrome, "Not supported yet?")]
-    [IgnoreBrowser(Infrastructure.Browser.Edge, "Not supported yet?")]
-    [IgnoreBrowser(Infrastructure.Browser.Firefox, "Not supported yet?")]
     public async Task CanSetDownloadBehaviorDenied()
     {
-        var result = await bidi.Browser.SetDownloadBehaviorDeniedAsync();
+        var result = await bidi.Browser.SetDownloadBehaviorAsync(new DownloadBehaviorDenied());
 
         Assert.That(result, Is.Not.Null);
     }

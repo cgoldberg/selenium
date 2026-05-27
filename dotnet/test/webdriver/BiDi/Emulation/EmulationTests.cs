@@ -198,7 +198,7 @@ internal class EmulationTests : BiDiTestFixture
     {
         Assert.That(async () =>
         {
-            await bidi.Emulation.SetGeolocationCoordinatesOverrideAsync(0, 0, new() { Contexts = [context] });
+            await bidi.Emulation.SetGeolocationOverrideAsync(new GeolocationCoordinatesOverride(0, 0), new() { Contexts = [context] });
         },
         Throws.Nothing);
     }
@@ -208,7 +208,7 @@ internal class EmulationTests : BiDiTestFixture
     {
         Assert.That(async () =>
         {
-            await bidi.Emulation.SetGeolocationCoordinatesOverrideAsync(new() { Contexts = [context] });
+            await bidi.Emulation.SetGeolocationOverrideAsync(null, new() { Contexts = [context] });
         },
         Throws.Nothing);
     }
@@ -219,7 +219,7 @@ internal class EmulationTests : BiDiTestFixture
     {
         Assert.That(async () =>
         {
-            await bidi.Emulation.SetGeolocationPositionErrorOverrideAsync(new() { Contexts = [context] });
+            await bidi.Emulation.SetGeolocationOverrideAsync(new GeolocationPositionErrorOverride(), new() { Contexts = [context] });
         },
         Throws.Nothing);
     }
@@ -251,7 +251,6 @@ internal class EmulationTests : BiDiTestFixture
     }
 
     [Test]
-    [IgnoreBrowser(Infrastructure.Browser.Firefox, "Not supported yet?")]
     public void CanSetNetworkConditionsOffline()
     {
         Assert.That(async () =>
@@ -262,7 +261,6 @@ internal class EmulationTests : BiDiTestFixture
     }
 
     [Test]
-    [IgnoreBrowser(Infrastructure.Browser.Firefox, "Not supported yet?")]
     public void CanSetNetworkConditionsToDefault()
     {
         Assert.That(async () =>
